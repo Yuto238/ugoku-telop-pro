@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run Streamlit 8510",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-lc",
+				"cd /Users/inoue/Downloads/ugoku_telop_pro && source venv/bin/activate && python -m streamlit run app.py --server.address 127.0.0.1 --server.port 8510"
+			],
+			"isBackground": true,
+			"group": "build"
+		}
+	]
+}
