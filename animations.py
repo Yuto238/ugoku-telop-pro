@@ -132,19 +132,19 @@ LABEL_TO_INTERNAL: dict[str, str] = {
 }
 
 PRESET_ANIMATION_MAP: dict[str, dict[str, str]] = {
-    "おしゃれリール用": {
+    "スタイリッシュリール": {
         "normal": "letter_fade",
         "light": "label_reveal",
         "strong": "letter_rise",
         "impact": "neon_flicker",
     },
-    "美容リール用": {
+    "美容リール": {
         "normal": "letter_fade",
         "light": "soft_pop",
         "strong": "label_reveal",
         "impact": "letter_rise",
     },
-    "ショート動画用": {
+    "ショート動画リール": {
         "normal": "fade_up",
         "light": "shake_accent",
         "strong": "stretch_in",
@@ -153,9 +153,9 @@ PRESET_ANIMATION_MAP: dict[str, dict[str, str]] = {
 }
 
 PRESET_DESCRIPTIONS: dict[str, str] = {
-    "おしゃれリール用": "上品で余白のある、おしゃれな動きに最適",
-    "美容リール用": "やわらかく上品で、垢抜けた印象に最適",
-    "ショート動画用": "テンポ感と訴求力を重視した、強い動きに最適",
+    "スタイリッシュリール": "上品で余白のある、おしゃれな動きに最適",
+    "美容リール": "やわらかく上品で、垢抜けた印象に最適",
+    "ショート動画リール": "テンポ感と訴求力を重視した、強い動きに最適",
 }
 
 EMPHASIS_UI_ROWS: list[dict[str, str]] = [

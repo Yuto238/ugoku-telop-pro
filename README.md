@@ -189,3 +189,31 @@ ugoku_telop_pro/
 
 このツールで生成した素材は、購入者本人のSNS投稿、YouTube動画、店舗SNS、クライアントワークなどに利用できます。  
 ただし、生成した素材を素材集として再販売することは禁止します。
+
+---
+
+## パスワード認証について
+
+このアプリはBOOTH購入者向けの簡易パスワード認証に対応しています。
+
+ローカル開発時は、デフォルトで以下の仮パスワードを使用します。
+
+demo_password
+
+本番環境では、Streamlit CloudのSecretsにAPP_PASSWORDを設定してください。
+
+例：
+
+APP_PASSWORD = "任意の本番パスワード"
+
+本番パスワードはGitHub上のコードに直接書かないでください。
+
+## Streamlit CloudでのSecrets設定
+
+1. Streamlit Cloudでアプリを開く
+2. App settingsを開く
+3. Secretsに以下を追加する
+
+APP_PASSWORD = "任意の本番パスワード"
+
+4. アプリを再起動する

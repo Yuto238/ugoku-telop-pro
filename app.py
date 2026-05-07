@@ -44,6 +44,12 @@ SAMPLE_OSHARE  = _load_sample("oshare.txt")
 SAMPLE_BEAUTY  = _load_sample("beauty.txt")
 SAMPLE_SHORTS  = _load_sample("shorts.txt")
 
+SAMPLE_SCRIPTS = {
+    "スタイリッシュリール用": SAMPLE_OSHARE,
+    "美容リール用": SAMPLE_BEAUTY,
+    "ショート動画用": SAMPLE_SHORTS,
+}
+
 BASE_DIR = Path(__file__).resolve().parent
 FONTS_DIR = BASE_DIR / "fonts"
 
@@ -175,6 +181,93 @@ def _render_export_result(result: dict | None) -> None:
         st.markdown("<div class='inline-label'>最新の書き出しプレビュー</div>", unsafe_allow_html=True)
         st.video(result["mp4_bytes"])
 
+
+def get_app_password() -> str:
+    DEFAULT_APP_PASSWORD = "demo_password"
+    try:
+        return st.secrets.get("APP_PASSWORD", DEFAULT_APP_PASSWORD)
+    except Exception:
+        return DEFAULT_APP_PASSWORD
+
+
+def check_password() -> bool:
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if st.session_state["authenticated"]:
+        return True
+
+    st.markdown(
+        """
+        <style>
+            .login-wrapper {
+                max-width: 620px;
+                margin: 90px auto 32px auto;
+                padding: 42px;
+                background: #ffffff;
+                border: 1px solid #e5e7eb;
+                border-radius: 28px;
+                box-shadow: 0 18px 45px rgba(15, 27, 61, 0.12);
+                text-align: center;
+            }
+
+            .login-badge {
+                display: inline-block;
+                background: #fff7ed;
+                color: #f59e0b;
+                border: 1px solid #fed7aa;
+                padding: 6px 12px;
+                border-radius: 999px;
+                font-size: 13px;
+                font-weight: 700;
+                margin-bottom: 16px;
+            }
+
+            .login-title {
+                font-size: 34px;
+                font-weight: 900;
+                color: #111827;
+                margin-bottom: 12px;
+            }
+
+            .login-description {
+                color: #6b7280;
+                line-height: 1.8;
+                margin-bottom: 8px;
+            }
+        </style>
+        <div class="login-wrapper">
+            <div class="login-badge">BOOTH購入者専用</div>
+            <div class="login-title">動くテロップメーカー Pro</div>
+            <div class="login-description">
+                台本からMP4テロップ素材を一括生成する購入者専用ツールです。<br>
+                BOOTHでダウンロードした案内ファイルに記載されたパスワードを入力してください。
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    password = st.text_input("購入者用パスワード", type="password", key="auth_password")
+    if st.button("ログイン", use_container_width=True):
+        if not password:
+            st.error("パスワードを入力してください。")
+        elif password == get_app_password():
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("パスワードが違います。BOOTHでダウンロードした「Pro版アクセスURL.txt」をご確認ください。")
+
+    st.caption("パスワードが分からない場合は、BOOTHでダウンロードした「Pro版アクセスURL.txt」をご確認ください。")
+    st.stop()
+
+
+def logout_button() -> None:
+    with st.sidebar:
+        if st.button("ログアウト", use_container_width=True):
+            st.session_state["authenticated"] = False
+            st.rerun()
+
 # ─────────────────────────────────────────────
 # ページ設定
 # ─────────────────────────────────────────────
@@ -183,6 +276,8 @@ st.set_page_config(
     page_icon="🎬",
     layout="wide"
 )
+
+check_password()
 
 # ─────────────────────────────────────────────
 # カスタムCSS
@@ -905,11 +1000,13 @@ st.markdown("""
 # ─────────────────────────────────────────────
 # ヘッダー
 # ─────────────────────────────────────────────
-if "script_text" not in st.session_state:
-    st.session_state["script_text"] = ""
+if "script_input" not in st.session_state:
+    st.session_state["script_input"] = ""
 
 if "export_result" not in st.session_state:
     st.session_state["export_result"] = None
+
+logout_button()
 
 # ─────────────────────────────────────────────
 # タブ
@@ -1212,16 +1309,16 @@ with tab1:
         _card_start("サンプル台本", "用途に近い台本を呼び出して、すぐに動きを確認できます。", kicker="Samples")
         sample_col1, sample_col2, sample_col3 = st.columns(3)
         with sample_col1:
-            if st.button("✨ おしゃれリール", width="stretch"):
-                st.session_state["script_text"] = SAMPLE_OSHARE
+            if st.button("✨ スタイリッシュリール用", use_container_width=True):
+                st.session_state["script_input"] = SAMPLE_SCRIPTS["スタイリッシュリール用"]
                 st.rerun()
         with sample_col2:
-            if st.button("💄 美容リール", width="stretch"):
-                st.session_state["script_text"] = SAMPLE_BEAUTY
+            if st.button("💄 美容リール用", use_container_width=True):
+                st.session_state["script_input"] = SAMPLE_SCRIPTS["美容リール用"]
                 st.rerun()
         with sample_col3:
-            if st.button("⚡ ショート動画", width="stretch"):
-                st.session_state["script_text"] = SAMPLE_SHORTS
+            if st.button("⚡ ショート動画用", use_container_width=True):
+                st.session_state["script_input"] = SAMPLE_SCRIPTS["ショート動画用"]
                 st.rerun()
         _card_end()
 
@@ -1238,7 +1335,7 @@ with tab1:
         )
         script_input = st.text_area(
             label="台本",
-            value=st.session_state["script_text"],
+            key="script_input",
             height=420,
             placeholder=(
                 "ここに台本を貼り付けてください。\n\n"
@@ -1248,9 +1345,7 @@ with tab1:
                 "!!一味違うリールに!!"
             ),
             label_visibility="collapsed",
-            key="script_input_main",
         )
-        st.session_state["script_text"] = script_input
 
         segs = []
         if script_input.strip():
