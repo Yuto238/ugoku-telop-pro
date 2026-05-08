@@ -193,9 +193,9 @@ EASING_MAP = {
 # ─────────────────────────────────────────────
 # 台本パーサー
 # ─────────────────────────────────────────────
-_RE_IMPACT = re.compile(r"^!!(.*?)!!$")
-_RE_STRONG = re.compile(r"^\*\*(.*?)\*\*$")
-_RE_LIGHT  = re.compile(r"^\*(.*?)\*$")
+_RE_IMPACT = re.compile(r"^!!([\s\S]*?)!!$", re.DOTALL)
+_RE_STRONG = re.compile(r"^\*\*([\s\S]*?)\*\*$", re.DOTALL)
+_RE_LIGHT  = re.compile(r"^\*([\s\S]*?)\*$", re.DOTALL)
 
 
 def _strip_inline_marks(text: str) -> str:
@@ -679,8 +679,9 @@ def _fit_base_text_layout(
     target_width = available_width / max(0.1, effective_scale_x)
     max_layer_height = (HEIGHT - TOP_SAFE_MARGIN - BOTTOM_SAFE_MARGIN) / max(0.1, effective_scale_y)
     glow_pad = GLOW_PADDING if _normalize_animation_name(seg.animation) == "neon_flicker" else 0
+    min_font_size = max(MIN_FONT_SIZE, 48) if "\n" in seg.text else MIN_FONT_SIZE
 
-    for size in range(seg.font_size, MIN_FONT_SIZE - 1, -2):
+    for size in range(seg.font_size, min_font_size - 1, -2):
         font = _load_font_for_segment(seg, size)
         if direction == "vertical":
             wrapped = seg.text.replace("\n", "")
@@ -704,7 +705,7 @@ def _fit_base_text_layout(
             return wrapped, size
 
     # ここまでで収まらない場合は最小フォントで強制改行
-    fallback_size = MIN_FONT_SIZE
+    fallback_size = min_font_size
     fallback_font = _load_font_for_segment(seg, fallback_size)
     if direction == "vertical":
         wrapped = seg.text.replace("\n", "")
@@ -871,7 +872,7 @@ def create_text_layer(
     lines = text.split("\n") if text else [""]
 
     if line_spacing is None:
-        line_spacing = max(LINE_SPACING, int(font.size * 0.28))
+        line_spacing = max(LINE_SPACING, int(font.size * 0.25))
 
     if direction_mode == "vertical":
         return create_vertical_text_layer(
@@ -1146,7 +1147,8 @@ def _layout_chars(
     lines = text.split("\n")
     ascent, descent = font.getmetrics()
     line_h = max(1, int(round((ascent + descent) * scale_y)))
-    total_h = max(1, len(lines) * line_h + max(0, len(lines) - 1) * LINE_SPACING)
+    line_spacing = max(LINE_SPACING, int(font.size * 0.25))
+    total_h = max(1, len(lines) * line_h + max(0, len(lines) - 1) * line_spacing)
 
     dx, dy = _optical_correction(text, seg.animation)
     block_center_y = _calc_center_y(seg, total_h) + dy
@@ -1174,7 +1176,7 @@ def _layout_chars(
                 padding_x=20,
                 padding_top=12,
                 padding_bottom=16,
-                line_spacing=LINE_SPACING,
+                line_spacing=line_spacing,
                 text_scale_x=scale_x,
                 text_scale_y=scale_y,
             )
@@ -1188,7 +1190,7 @@ def _layout_chars(
                 adv = max(1, int(round(font.size * (0.35 if ch.isspace() else 0.52) * scale_x)))
             positions.append((ch, x, y, adv))
             x += adv
-        y += line_h + LINE_SPACING
+        y += line_h + line_spacing
 
     return positions
 
@@ -1348,8 +1350,8 @@ def render_label_reveal(
         text_scale_x=scale_x_style,
         text_scale_y=scale_y_style,
     )
-    px = 38
-    py = 22
+    px = int(font.size * 0.45)
+    py = int(font.size * 0.30)
 
     reveal = ease_out_cubic(min(1.0, p / 0.55))
     dx, dy = _optical_correction(text, seg.animation)
