@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import colorsys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Mapping, Tuple
@@ -107,8 +108,12 @@ ANIMATION_ALIASES: Dict[str, str] = {
     "letter_rise": "letter_rise",
     "hacker_text": "hacker_text",
     "neon_flicker": "neon_flicker",
+    "block_reveal": "block_reveal",
+    "terminal_type": "terminal_type",
+    "color_shift": "color_shift",
+    "focus_in": "focus_in",
     "fade_up": "letter_fade",
-    "soft_pop": "label_reveal",
+    "soft_pop": "soft_pop",
     "pop_in": "stretch_in",
     "zoom_punch": "huge_impact",
 }
@@ -463,6 +468,11 @@ def _animation_safe_scale(animation: str) -> float:
         "huge_impact": 1.12,
         "stretch_in": 1.10,
         "label_reveal": 1.05,
+        "block_reveal": 1.08,
+        "terminal_type": 1.00,
+        "color_shift": 1.00,
+        "focus_in": 1.10,
+        "soft_pop": 1.08,
         "letter_fade": 1.00,
         "shake_accent": 1.06,
         "typewriter": 1.00,
@@ -1381,6 +1391,239 @@ def render_label_reveal(
         _apply_layer(img, text_layer, center_x, center_y, opacity=text_alpha / 255.0)
 
 
+def render_soft_pop(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    seg: Segment,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    frame_idx: int,
+    total_frames: int,
+) -> None:
+    direction = _segment_text_direction(seg)
+    scale_x_style, scale_y_style = _segment_scales(seg)
+    p = frame_idx / max(1, total_frames - 1)
+
+    # Soft Pop: やわらかく拡大してから自然に等倍へ戻す
+    if p < 0.58:
+        scale = 0.92 + (1.06 - 0.92) * ease_out_cubic(p / 0.58)
+    elif p < 0.82:
+        scale = 1.06 - (1.06 - 1.0) * ease_in_out_cubic((p - 0.58) / 0.24)
+    else:
+        scale = 1.0
+
+    opacity = min(1.0, p / 0.18)
+
+    layer, _, th, _ = _create_main_text_layer(
+        text,
+        font,
+        (*TEXT_COLOR, 255),
+        shadow_rgba=(0, 0, 0, 140),
+        direction=direction,
+        text_scale_x=scale_x_style,
+        text_scale_y=scale_y_style,
+    )
+    vb = get_visible_bbox(layer)
+    vis_h = (vb[3] - vb[1]) if vb else th
+    dx, dy = _optical_correction(text, seg.animation)
+    center_y = _calc_center_y(seg, vis_h) + dy
+    _apply_layer(img, layer, WIDTH // 2 + dx, center_y, scale, scale, opacity)
+
+
+def render_block_reveal(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    seg: Segment,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    frame_idx: int,
+    total_frames: int,
+) -> None:
+    direction = _segment_text_direction(seg)
+    scale_x_style, scale_y_style = _segment_scales(seg)
+    p = frame_idx / max(1, total_frames - 1)
+    reveal_progress = ease_out_cubic(min(1.0, p / 0.65))
+    block_progress = ease_out_cubic(min(1.0, p / 0.82))
+
+    text_layer, tw, th, _ = _create_main_text_layer(
+        text,
+        font,
+        (*TEXT_COLOR, 255),
+        shadow_rgba=(0, 0, 0, 140),
+        direction=direction,
+        text_scale_x=scale_x_style,
+        text_scale_y=scale_y_style,
+    )
+    vb = get_visible_bbox(text_layer)
+    vis_w = (vb[2] - vb[0]) if vb else max(1, tw)
+    vis_h = (vb[3] - vb[1]) if vb else max(1, th)
+    dx, dy = _optical_correction(text, seg.animation)
+    center_x = WIDTH // 2 + dx
+    center_y = _calc_center_y(seg, vis_h) + dy
+
+    reveal_mask = Image.new("L", (text_layer.width, text_layer.height), 0)
+    md = ImageDraw.Draw(reveal_mask)
+    if direction == "vertical":
+        reveal_h = int(text_layer.height * reveal_progress)
+        md.rectangle((0, 0, text_layer.width, reveal_h), fill=255)
+    else:
+        reveal_w = int(text_layer.width * reveal_progress)
+        md.rectangle((0, 0, reveal_w, text_layer.height), fill=255)
+
+    revealed = Image.new("RGBA", text_layer.size, (0, 0, 0, 0))
+    revealed.paste(text_layer, (0, 0), reveal_mask)
+    _apply_layer(img, revealed, center_x, center_y, opacity=1.0)
+
+    block_alpha = 235
+    if p > 0.86:
+        block_alpha = int(max(0, 235 * (1.0 - (p - 0.86) / 0.14)))
+    if block_alpha <= 0:
+        return
+
+    block_color = (17, 24, 39, block_alpha)
+    if direction == "vertical":
+        block_w = max(24, int(vis_w * 1.35))
+        block_h = max(24, int(vis_h * 0.40))
+        travel = vis_h + block_h * 2
+        top_start = center_y - vis_h // 2 - block_h
+        block_x = center_x - block_w // 2
+        block_y = int(round(top_start + travel * block_progress))
+    else:
+        block_w = max(24, int(vis_w * 0.40))
+        block_h = max(24, int(vis_h * 1.35))
+        travel = vis_w + block_w * 2
+        left_start = center_x - vis_w // 2 - block_w
+        block_x = int(round(left_start + travel * block_progress))
+        block_y = center_y - block_h // 2
+
+    radius = max(8, int(min(block_w, block_h) * 0.14))
+    block_layer = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+    bd = ImageDraw.Draw(block_layer)
+    bd.rounded_rectangle(
+        (block_x, block_y, block_x + block_w, block_y + block_h),
+        radius=radius,
+        fill=block_color,
+    )
+    img.alpha_composite(block_layer)
+
+
+def render_terminal_type(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    seg: Segment,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    frame_idx: int,
+    total_frames: int,
+) -> None:
+    direction = _segment_text_direction(seg)
+    scale_x_style, scale_y_style = _segment_scales(seg)
+    p = frame_idx / max(1, total_frames - 1)
+    reveal_ratio = min(1.0, p / 0.72)
+
+    total_chars = max(1, len(text))
+    visible_count = min(total_chars, int(math.floor(total_chars * reveal_ratio)))
+    visible_text = text[:visible_count]
+
+    cursor_on = ((frame_idx // max(1, FPS // 4)) % 2) == 0
+    cursor = "｜" if direction == "vertical" else "▌"
+    if cursor_on and visible_count < total_chars:
+        visible_text += cursor
+    elif cursor_on and visible_count >= total_chars:
+        visible_text += cursor
+
+    layer, _, th, _ = _create_main_text_layer(
+        visible_text,
+        font,
+        (240, 255, 240, 255),
+        shadow_rgba=(0, 0, 0, 150),
+        direction=direction,
+        text_scale_x=scale_x_style,
+        text_scale_y=scale_y_style,
+    )
+    vb = get_visible_bbox(layer)
+    vis_h = (vb[3] - vb[1]) if vb else th
+    dx, dy = _optical_correction(visible_text or text, seg.animation)
+    center_y = _calc_center_y(seg, vis_h) + dy
+    _apply_layer(img, layer, WIDTH // 2 + dx, center_y, opacity=1.0)
+
+
+def render_color_shift(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    seg: Segment,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    frame_idx: int,
+    total_frames: int,
+) -> None:
+    direction = _segment_text_direction(seg)
+    scale_x_style, scale_y_style = _segment_scales(seg)
+    t = frame_idx / max(1, FPS)
+    hue = (t * 0.25) % 1.0
+    r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 1.0)
+    fill = (int(r * 255), int(g * 255), int(b * 255), 255)
+
+    layer, _, th, _ = _create_main_text_layer(
+        text,
+        font,
+        fill,
+        shadow_rgba=(0, 0, 0, 145),
+        direction=direction,
+        text_scale_x=scale_x_style,
+        text_scale_y=scale_y_style,
+    )
+    vb = get_visible_bbox(layer)
+    vis_h = (vb[3] - vb[1]) if vb else th
+    dx, dy = _optical_correction(text, seg.animation)
+    center_y = _calc_center_y(seg, vis_h) + dy
+    _apply_layer(img, layer, WIDTH // 2 + dx, center_y, opacity=1.0)
+
+
+def render_focus_in(
+    img: Image.Image,
+    draw: ImageDraw.ImageDraw,
+    seg: Segment,
+    text: str,
+    font: ImageFont.FreeTypeFont,
+    frame_idx: int,
+    total_frames: int,
+) -> None:
+    direction = _segment_text_direction(seg)
+    scale_x_style, scale_y_style = _segment_scales(seg)
+    p = frame_idx / max(1, total_frames - 1)
+    progress = ease_out_cubic(min(1.0, p / 0.45))
+    blur_radius = max(0.0, (1.0 - progress) * 18.0)
+    scale = 1.08 - 0.08 * progress
+    opacity = 0.28 + 0.72 * progress
+
+    text_layer, _, th, _ = create_text_layer(
+        text,
+        font,
+        fill=(255, 255, 255, 255),
+        stroke_width=2,
+        stroke_fill=(0, 0, 0, 150),
+        padding_x=TEXT_PADDING_X,
+        padding_top=TEXT_PADDING_TOP,
+        padding_bottom=TEXT_PADDING_BOTTOM,
+        extra_padding=60,
+        direction=direction,
+        text_scale_x=scale_x_style,
+        text_scale_y=scale_y_style,
+    )
+
+    base_vb = get_visible_bbox(text_layer)
+    vis_h = (base_vb[3] - base_vb[1]) if base_vb else th
+
+    layer = text_layer
+    if blur_radius > 0.05:
+        layer = layer.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+
+    dx, dy = _optical_correction(text, seg.animation)
+    center_y = _calc_center_y(seg, vis_h) + dy
+    _apply_layer(img, layer, WIDTH // 2 + dx, center_y, scale, scale, opacity)
+
+
 def render_letter_fade(
     img: Image.Image,
     draw: ImageDraw.ImageDraw,
@@ -1805,6 +2048,11 @@ ANIMATION_RENDERERS = {
     "huge_impact": render_huge_impact,
     "stretch_in": render_stretch_in,
     "label_reveal": render_label_reveal,
+    "soft_pop": render_soft_pop,
+    "block_reveal": render_block_reveal,
+    "terminal_type": render_terminal_type,
+    "color_shift": render_color_shift,
+    "focus_in": render_focus_in,
     "letter_fade": render_letter_fade,
     "shake_accent": render_shake_accent,
     "typewriter": render_typewriter,

@@ -11,6 +11,17 @@
 - CapCut / Premiere Pro / DaVinci Resolve などの動画編集ソフトで使用できます
 - 背景はグリーンバック（RGB 0,255,0）固定。クロマキーで緑を抜いて使用してください
 
+## 追加アニメーション
+
+以下のアニメーションに対応しました。
+
+- Block Reveal
+- Terminal Type
+- Color Shift
+- Focus In
+
+これらは、台本一括生成、セグメント別MP4生成、ZIP一括ダウンロード、1本MP4生成に対応しています。
+
 ### 強調マーク
 
 | 記法 | 効果 |
