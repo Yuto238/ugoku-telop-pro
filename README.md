@@ -196,15 +196,15 @@ ugoku_telop_pro/
 
 このアプリはBOOTH購入者向けの簡易パスワード認証に対応しています。
 
-ローカル開発時は、デフォルトで以下の仮パスワードを使用します。
+ローカル開発時は、デフォルトで以下のパスワードを使用します。
 
-demo_password
+TelopPro_2026_B7Q
 
 本番環境では、Streamlit CloudのSecretsにAPP_PASSWORDを設定してください。
 
 例：
 
-APP_PASSWORD = "任意の本番パスワード"
+APP_PASSWORD = "TelopPro_2026_B7Q"
 
 本番パスワードはGitHub上のコードに直接書かないでください。
 
@@ -214,6 +214,6 @@ APP_PASSWORD = "任意の本番パスワード"
 2. App settingsを開く
 3. Secretsに以下を追加する
 
-APP_PASSWORD = "任意の本番パスワード"
+APP_PASSWORD = "TelopPro_2026_B7Q"
 
 4. アプリを再起動する

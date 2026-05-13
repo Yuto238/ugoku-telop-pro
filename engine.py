@@ -1876,6 +1876,56 @@ def _check_ffmpeg() -> None:
         )
 
 
+def attach_sound_to_mp4(
+    video_path: Path,
+    output_path: Path,
+    sound_path: Path | None = None,
+    video_duration: float | None = None,
+    add_silent_track: bool = False,
+) -> None:
+    """既存MP4に効果音（または無音トラック）を付与する。"""
+    _check_ffmpeg()
+
+    if not video_path.exists() or video_path.stat().st_size == 0:
+        raise RuntimeError(f"入力動画が見つかりません: {video_path}")
+
+    duration = max(0.01, float(video_duration or 0.0)) if video_duration else None
+
+    if sound_path is None and not add_silent_track:
+        if video_path.resolve() == output_path.resolve():
+            return
+        shutil.copy2(video_path, output_path)
+        return
+
+    cmd = ["ffmpeg", "-y", "-i", str(video_path)]
+
+    if sound_path is not None:
+        if not sound_path.exists() or sound_path.stat().st_size == 0:
+            raise RuntimeError(f"効果音ファイルが見つかりません: {sound_path}")
+        cmd.extend(["-i", str(sound_path)])
+    else:
+        cmd.extend(["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"])
+
+    cmd.extend(["-map", "0:v:0", "-map", "1:a:0"])
+    if duration is not None:
+        cmd.extend(["-t", f"{duration:.3f}"])
+
+    cmd.extend([
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-shortest",
+        "-movflags", "+faststart",
+        str(output_path),
+    ])
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"音声合成に失敗しました。\n{result.stderr}")
+
+    if not output_path.exists() or output_path.stat().st_size == 0:
+        raise RuntimeError("音声合成後のMP4が生成されませんでした。")
+
+
 def generate_segment_mp4(
     seg: Segment,
     output_path: Path,
@@ -1988,11 +2038,13 @@ def merge_segments_to_single_mp4(mp4_paths: List[Path], output_dir: Path) -> Pat
         "-f", "concat",
         "-safe", "0",
         "-i", str(concat_list),
+        "-map", "0:v:0",
+        "-map", "0:a?",
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-crf", "23",
         "-pix_fmt", "yuv420p",
-        "-an",
+        "-c:a", "aac",
         "-movflags", "+faststart",
         str(merged_path),
     ]

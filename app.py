@@ -20,6 +20,7 @@ from animations import (
 )
 from engine import (
     MAX_SEGMENTS,
+    attach_sound_to_mp4,
     build_zip,
     create_style_preview_image,
     generate_segment_mp4,
@@ -105,6 +106,32 @@ def _apply_style_to_segments(segments: list, style_settings: dict) -> None:
         seg.text_direction = _normalize_direction(style_settings["text_direction"])
 
 
+SFX_MODE_NONE = "効果音なし"
+SFX_MODE_SAME = "全テロップに同じ効果音を付ける"
+SFX_MODE_BY_EMPHASIS = "強調レベルごとに効果音を設定する"
+SFX_ALLOWED_EXTENSIONS = {".mp3", ".wav", ".m4a"}
+SFX_EMPHASIS_LABELS = {
+    "normal": "通常文",
+    "light": "軽く強調",
+    "strong": "強く強調",
+    "impact": "大きく強調",
+}
+
+
+def _save_uploaded_audio_file(uploaded_file, output_dir: Path, stem: str) -> Path | None:
+    if uploaded_file is None:
+        return None
+
+    suffix = Path(uploaded_file.name or "").suffix.lower()
+    if suffix not in SFX_ALLOWED_EXTENSIONS:
+        suffix = ".audio"
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / f"{stem}{suffix}"
+    out_path.write_bytes(uploaded_file.getvalue())
+    return out_path
+
+
 EXPORT_MODE_DESCRIPTIONS = {
     "セグメントMP4をZIPでダウンロード": "編集ソフトで細かく配置したい方向け。セグメントごとに読み込めます。",
     "1本のMP4動画としてダウンロード": "すぐに動画へ重ねたい方向け。確認用の1本動画を生成します。",
@@ -183,7 +210,7 @@ def _render_export_result(result: dict | None) -> None:
 
 
 def get_app_password() -> str:
-    DEFAULT_APP_PASSWORD = "demo_password"
+    DEFAULT_APP_PASSWORD = "TelopPro_2026_B7Q"
     try:
         return st.secrets.get("APP_PASSWORD", DEFAULT_APP_PASSWORD)
     except Exception:
@@ -1100,6 +1127,15 @@ with tab1:
         "ショート動画用": "テンポよく目を引く、強めの動き。",
     }
 
+    sound_mode = SFX_MODE_NONE
+    global_sound_upload = None
+    emphasis_sound_uploads = {
+        "normal": None,
+        "light": None,
+        "strong": None,
+        "impact": None,
+    }
+
     with left_col:
         _card_start("用途別プリセット", "目的に合わせておすすめの動きをベース設定にできます。", kicker="Preset")
         selected_usecase_preset = st.selectbox(
@@ -1297,6 +1333,51 @@ with tab1:
                 st.write("Missing font files:", missing_fonts)
         _card_end()
 
+        _card_start("効果音設定", "ユーザー自身が用意した音声をアップロードして、各MP4に合成できます。", kicker="Sound FX")
+        sound_mode = st.radio(
+            "効果音の付け方",
+            options=[SFX_MODE_NONE, SFX_MODE_SAME, SFX_MODE_BY_EMPHASIS],
+            index=0,
+            key="sound_mode",
+        )
+
+        if sound_mode == SFX_MODE_SAME:
+            global_sound_upload = st.file_uploader(
+                "全テロップ共通の効果音（mp3 / wav / m4a）",
+                type=["mp3", "wav", "m4a"],
+                key="sound_upload_same",
+            )
+            if global_sound_upload is None:
+                st.caption("未選択の場合は効果音なしで出力します。")
+
+        if sound_mode == SFX_MODE_BY_EMPHASIS:
+            emphasis_sound_uploads["normal"] = st.file_uploader(
+                "通常文（任意）",
+                type=["mp3", "wav", "m4a"],
+                key="sound_upload_normal",
+            )
+            emphasis_sound_uploads["light"] = st.file_uploader(
+                "軽く強調（任意）",
+                type=["mp3", "wav", "m4a"],
+                key="sound_upload_light",
+            )
+            emphasis_sound_uploads["strong"] = st.file_uploader(
+                "強く強調（任意）",
+                type=["mp3", "wav", "m4a"],
+                key="sound_upload_strong",
+            )
+            emphasis_sound_uploads["impact"] = st.file_uploader(
+                "大きく強調（任意）",
+                type=["mp3", "wav", "m4a"],
+                key="sound_upload_impact",
+            )
+
+        st.warning(
+            "効果音ファイルはご自身で利用権利を確認したものをご使用ください。\n"
+            "再配布・商用利用・加工が禁止されている音源の使用はお控えください。"
+        )
+        _card_end()
+
         selected_font_path = str(available_fonts[selected_font_name])
         style_settings = {
             "font_name": selected_font_name,
@@ -1471,12 +1552,21 @@ with tab1:
             ("軽く強調", ANIMATION_PRESETS.get(effective_animation_map["light"], {}).get("label", effective_animation_map["light"])),
             ("強く強調", ANIMATION_PRESETS.get(effective_animation_map["strong"], {}).get("label", effective_animation_map["strong"])),
             ("大きく強調", ANIMATION_PRESETS.get(effective_animation_map["impact"], {}).get("label", effective_animation_map["impact"])),
+            ("効果音モード", sound_mode),
             ("フォント", selected_font_name),
             ("文字方向", text_direction),
             ("横幅", f"{text_scale_x:.2f}"),
             ("縦幅", f"{text_scale_y:.2f}"),
             ("書き出し方法", export_mode),
         ]
+
+        if sound_mode == SFX_MODE_SAME:
+            summary_rows.append(("共通効果音", global_sound_upload.name if global_sound_upload else "なし"))
+        elif sound_mode == SFX_MODE_BY_EMPHASIS:
+            for level in ("normal", "light", "strong", "impact"):
+                uploaded = emphasis_sound_uploads[level]
+                summary_rows.append((f"{SFX_EMPHASIS_LABELS[level]}の効果音", uploaded.name if uploaded else "なし"))
+
         st.markdown("<div class='summary-grid'>", unsafe_allow_html=True)
         for label, value in summary_rows:
             st.markdown(
@@ -1524,6 +1614,27 @@ with tab1:
             errors = []
             total = len(segments)
 
+            sound_dir = tmp_path / "uploaded_sounds"
+            emphasis_sound_paths: dict[str, Path | None] = {
+                "normal": None,
+                "light": None,
+                "strong": None,
+                "impact": None,
+            }
+            if sound_mode == SFX_MODE_SAME and global_sound_upload is not None:
+                shared_path = _save_uploaded_audio_file(global_sound_upload, sound_dir, "shared_sound")
+                for level in emphasis_sound_paths:
+                    emphasis_sound_paths[level] = shared_path
+            elif sound_mode == SFX_MODE_BY_EMPHASIS:
+                for level in emphasis_sound_paths:
+                    emphasis_sound_paths[level] = _save_uploaded_audio_file(
+                        emphasis_sound_uploads.get(level),
+                        sound_dir,
+                        f"sound_{level}",
+                    )
+
+            has_any_sound = any(path is not None for path in emphasis_sound_paths.values())
+
             with progress_host:
                 progress_text = st.empty()
                 progress_bar = st.progress(0)
@@ -1538,6 +1649,19 @@ with tab1:
 
                 try:
                     generate_segment_mp4(seg, out_path, tmp_path, style_settings=style_settings)
+
+                    if has_any_sound:
+                        sound_path = emphasis_sound_paths.get(seg.emphasis)
+                        with_sound_path = tmp_path / f"ugoku_telop_{seg.index:03d}_with_sound.mp4"
+                        attach_sound_to_mp4(
+                            video_path=out_path,
+                            output_path=with_sound_path,
+                            sound_path=sound_path,
+                            video_duration=seg.duration,
+                            add_silent_track=(sound_path is None),
+                        )
+                        with_sound_path.replace(out_path)
+
                     mp4_paths.append(out_path)
                 except Exception as e:
                     errors.append((seg.index, str(e)))
